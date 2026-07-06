@@ -61,7 +61,7 @@ clear
 
 %%
 % Point to the specific indium calibration data file
-dinfo = dir('cle_ind_cu2_06102026_3.txt');
+dinfo = dir('cle_ind_baseline_06222026.txt');
 
 for F = 1 : length(dinfo)  % Outer loop: iterate over matched files (typically just 1)
     fname = dinfo(F).name;  % Get filename
@@ -103,7 +103,7 @@ for F = 1 : length(dinfo)  % Outer loop: iterate over matched files (typically j
 
     % Compute the heating rate for each segment using two adjacent points
     % near row 25, where the ramp is expected to be well-established
-    N = size(t_all,2);  % Total number of segments
+    N = width(t_all);  % Total number of segments
     for k = 1:N
         HRs(k) = (Tr_all(25,k) - Tr_all(24,k)) / (t_all(25,k) - t_all(24,k));  % K/s
     end
@@ -131,13 +131,13 @@ for F = 1 : length(dinfo)  % Outer loop: iterate over matched files (typically j
     % Find end of valid data in segment 2 (first NaN row)
     cend_1 = find(isnan(Q_all(:,2)), 1);
 
-    for K = 2:N  % Loop over all segments (skip segment 1)
+    for K = 2:N  % Loop over all segments
         % Find the last valid row for this segment
         cend = find(isnan(Q_all(:,K)), 1);
         if isempty(cend)
             cend = 35810;  % Fallback length if no NaN terminator is found
         end
-        lengths_ind(K-1) = cend - 1;  % Store usable length for each segment
+        lengths_ind(K - 1) = cend - 1;  % Store usable length for each segment
         % Extract reference temperature and heat flow for this segment
         testT = Tr_all(1:cend-1, K)';  % Row vector of temperatures
         testQ = Q_all(1:cend-1, K)';   % Row vector of heat flows
@@ -168,7 +168,7 @@ for F = 1 : length(dinfo)  % Outer loop: iterate over matched files (typically j
         % thermal lag between sample and sensor. Its height is used as an
         % independent mass estimator via the heat capacity (Cp).
 
-        for P = 2:N
+        for P = 1:N
             if isnan(T_rl_means(:, 2))
             else
             testT = Tr_all(1:lengths_ind(:, 1),P);
@@ -226,18 +226,16 @@ for F = 1 : length(dinfo)  % Outer loop: iterate over matched files (typically j
 
     % Estimate sample mass from hook method: divide hook height (mW offset)
     % by heating rate and indium's Cp (0.23 J/g/K), converting to nanograms
-    disp(hookheights)
-    disp(HRs)
-    mass_hook = abs(hookheights * 1e-3 ./ HRs ./ 0.23 / 1e-9)
+    mass_hook = abs(hookheights * 1e-3 ./ HRs ./ 0.23 / 1e-9);
 
-    %% Compare enthalpies (runs 1–19): mass estimates vs. heating rate
+    %% Compare enthalpies (runs 1–9): mass estimates vs. heating rate
     figure()
     % Enthalpy-derived mass (moving peak bounds) — filled blue dots
-    semilogx(Q_all(1:13), abs(hcrys_mean(1:13)) * 1e-3 ./ Q_all(1:13) ./ 28.6 / 1e-9, ...
+    semilogx(HRs(1:9), abs(hcrys_mean(1:9)) * 1e-3 ./ Q_all(1:9) ./ 28.6 / 1e-9, ...
         '.b', 'markersize', 36, 'linewidth', 2)
     hold on
     % Hook-derived mass — blue crosses
-    semilogx(Q_all(1:13), abs(hookheights(1:13)) * 1e-3 ./ Q_all(1:13) ./ 0.23 / 1e-9, ...
+    semilogx(HRs(1:9), abs(hookheights(1:9)) * 1e-3 ./ Q_all(1:9) ./ 0.23 / 1e-9, ...
         'xb', 'markersize', 12, 'linewidth', 2)
     xlim([4e-1 2e4])
     ylim([1e3 6e3])
@@ -249,13 +247,13 @@ for F = 1 : length(dinfo)  % Outer loop: iterate over matched files (typically j
 
     % %% Compare enthalpy vs. hook mass estimates as a function of sample mass
     % % Restrict to runs with physically meaningful heating rates (0.1–2000 K/s)
-    % excl2 = find(Q_all < 2e3 & Q_all > 0.1);
-    % dummy = linspace(5e-3, max(mass_hook(excl2)) + 500);  % 1:1 reference line range
-    % 
-    % figure()
-    % loglog(mass_hcrys(excl2), mass_hook(excl2), 'or', 'markersize', 12)
-    % hold on
-    % loglog(dummy, dummy)  % 1:1 line — perfect agreement between both mass estimators
+    excl2 = find(Q_all < 2e3 & Q_all > 0.1);
+    dummy = linspace(5e-3, max(mass_hook(1:9)) + 500);  % 1:1 reference line range
+
+    figure()
+    loglog(mass_hcrys(1:9), mass_hook(1:9), 'or', 'markersize', 12)
+    hold on
+    loglog(dummy, dummy)  % 1:1 line — perfect agreement between both mass estimators
     % Note: agreement is sensitive to accuracy of the heating rate estimate
 
     %% Ratio of hook mass to enthalpy mass as a function of heating rate
@@ -274,7 +272,7 @@ for F = 1 : length(dinfo)  % Outer loop: iterate over matched files (typically j
     patch([5e-1 2e4 2e4 5e-1], [0.8 0.8 0.9 0.9], [183, 216, 247]/256, 'edgecolor', 'none')
 
     % Plot ratio: hook mass / enthalpy mass for each valid segment
-    semilogx(Q_all(subs), ...
+    semilogx(HRs(subs), ...
         (abs(hookheights(subs)) * 1e-3 ./ Q_all(subs) ./ 0.23 / 1e-9) ./ ...
         (abs(hcrys_mean(subs)) * 1e-3 ./ Q_all(subs) ./ 28.6 / 1e-9), ...
         '.b', 'markersize', 36, 'linewidth', 2)

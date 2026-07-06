@@ -49,45 +49,94 @@ end
     % Store this file's data
     all_temp{K} = temp_sample_heat;
     all_heatflow{K} = heatflow_heat;
-
-%% Plot raw data for each heating segment
-figure(K)
-% splitting into heating vs cooling segments
-flow_heat = heatflow_heat(:,3:2:end-2);
-t_heat = temp_sample_heat(:,3:2:end-2);
-flow_cool = heatflow_heat(:,2:2:end-2);
-t_cool = temp_sample_heat(:,2:2:end-2);
-for heat=1:segment_number-1
-    plot(temp_sample_heat(:,heat),heatflow_heat(:,heat),'-','LineWidth',0.5,'DisplayName',num2str(heat))
-    hold on
-end
-set(gca,'FontSize',15)
-xlabel('Temperature (\circC)','FontSize',20)
-ylabel('Power (mW)','FontSize',20)
-title(fname,'Interpreter','none')
-xlim([20 325])
-hold on
-% legend('Location','best')
 end
 
-%% Plot file2 - file1 (subtracted) if at least 2 files exist
-    temp1 = all_temp{2};
-    temp2 = all_temp{3};
-    flow1 = all_heatflow{2};
-    flow2 = all_heatflow{3};
+%% Separate figure per file — subtract indium baseline only for "ind" files
+%% (e.g. copper oxide files) so their data is shown net of the indium signal
+%% All figures share the same y-axis scale
 
-   
-    numSegs = min(size(temp1,2), size(temp2,2));
-    figure(length(dinfo)+1)
+% Find the baseline file index by name
+baseline_idx = find(contains({dinfo.name}, 'cle_ind_baseline'));
+if isempty(baseline_idx)
+    error('Could not find a file named cle_ind_baseline in dinfo.');
+elseif numel(baseline_idx) > 1
+    error('Multiple files match cle_ind_baseline — name collision.');
+end
+
+temp_base = all_temp{baseline_idx};
+flow_base = all_heatflow{baseline_idx};
+
+%% First pass: compute the y-data for every file/segment and track global min/max
+plot_data = cell(length(dinfo), 1);  % store {seg}.x, {seg}.y per file
+global_ymin = Inf;
+global_ymax = -Inf;
+
+for fidx = 1:length(dinfo)
+    temp1 = all_temp{fidx};
+    flow1 = all_heatflow{fidx};
+    numSegs = size(temp1,2);
+
+    % Files with 'ind' in the name (e.g. copper oxide runs on the indium
+    % chip) get the indium baseline subtracted; the baseline file itself
+    % is shown raw.
+    is_ind_file = contains(dinfo(fidx).name, 'ind') && fidx ~= baseline_idx;
+
+    seg_x = cell(numSegs,1);
+    seg_y = cell(numSegs,1);
+
     for seg = 1:numSegs
-        flow2_interp = interp1(temp2(:,seg), flow2(:,seg), temp1(:,seg), 'linear', NaN);
-        flow_diff = flow1(:,seg) - flow2_interp;
-        plot(temp1(:,seg), flow_diff, '-', 'LineWidth', 0.5, 'DisplayName', num2str(seg))
-        hold on
+        if is_ind_file
+            numSegsUse = min(numSegs, size(temp_base,2));
+            if seg > numSegsUse
+                continue
+            end
+            flow_base_interp = interp1(temp_base(:,seg), flow_base(:,seg), temp1(:,seg), 'linear', NaN);
+            y = flow1(:,seg) - flow_base_interp;
+        else
+            y = flow1(:,seg);
+        end
+        seg_x{seg} = temp1(:,seg);
+        seg_y{seg} = y;
+
+        global_ymin = min(global_ymin, min(y, [], 'omitnan'));
+        global_ymax = max(global_ymax, max(y, [], 'omitnan'));
     end
+
+    plot_data{fidx} = struct('x', {seg_x}, 'y', {seg_y}, 'is_ind_file', is_ind_file);
+end
+
+% Add a little padding so curves don't touch the plot edges
+yrange = global_ymax - global_ymin;
+ypad = 0.05 * yrange;
+ylims = [global_ymin - ypad, global_ymax + ypad];
+
+%% Second pass: plot each file with the shared y-axis scale
+for fidx = 1:length(dinfo)
+    data = plot_data{fidx};
+    numSegs = numel(data.x);
+
+    figure(fidx)
+    clf   % clear the figure so old plots don't linger between runs
+    hold on
+    for seg = 1:numSegs
+        if isempty(data.x{seg})
+            continue
+        end
+        plot(data.x{seg}, data.y{seg}, '-', 'LineWidth', 0.5, 'DisplayName', num2str(seg))
+    end
+    hold off
+
     set(gca,'FontSize',15)
     xlabel('Temperature (\circC)','FontSize',20)
-    ylabel('\Delta Power (mW)','FontSize',20)
-    title(sprintf('Cu2 only', dinfo(2).name, dinfo(1).name), 'Interpreter','none')
+    if data.is_ind_file
+        ylabel('\Delta Power (mW)','FontSize',20)
+        title(sprintf('%s (indium baseline subtracted)', dinfo(fidx).name), 'Interpreter','none')
+        yline(0, '--k', 'LineWidth', 0.5)
+    else
+        ylabel('Power (mW)','FontSize',20)
+        title(dinfo(fidx).name, 'Interpreter','none')
+    end
     xlim([20 325])
-    yline(0, '--k', 'LineWidth', 0.5)  % reference zero line
+    ylim(ylims)
+    legend('show')
+end
