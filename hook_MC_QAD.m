@@ -53,10 +53,10 @@ if nargin < 4
     N = 1000;
 end
 
-N_SP = rand(1,N); 
-N_SW = rand(1,N); 
-N_IP = rand(1,N); 
-N_IW = rand(1,N);
+N_SP = rand(N,1); 
+N_SW = rand(N,1); 
+N_IP = rand(N,1); 
+N_IW = rand(N,1);
 
 %% Check whether figures are on
 if nargin < 3
@@ -74,7 +74,7 @@ switch Mode
 % The noise fit is the fit to all the data after 10 degrees from the hook.
 
 % Get a derivative to work with:
-dT = zeros(length(T)-1,1);
+dT = zeros(length(T)-1,1); 
 dQ = zeros(length(T)-1,1);
 for j = 1:length(T)-1
     dT(j) = (T(j+1)+T(j))/2;
@@ -155,14 +155,11 @@ pdf_IP(ind_IP) = 1/(T_IP_max-T_IP_min);
 % Sample values:
 
 v_IP = N_IP.*(T_IP_max-T_IP_min)+T_IP_min;
-disp('v_IP'); disp(size(v_IP))
 % Get closest points to samples values
 
 ind_IP = zeros(size(N_IP));
 T_IP = zeros(size(N_IP));
 for i = 1:(length(N_IP))
-    disp('v_IP'); disp(v_IP)
-
     [~,ind_IP(i)] = min(abs(T-v_IP(i)));
     T_IP(i) = T(ind_IP(i));
 end
@@ -190,10 +187,10 @@ pdf_IW = 1/(w_IW_max-w_IW_min);
 w_IW = N_IW*(w_IW_max-w_IW_min)+w_IW_min;
 
 % As a last step, let's get the indexes around the sampled inflection pts
-ind_IL = zeros(size(T));  % Lower T than the inflection point
-ind_IR = zeros(size(T));  % Higher T than the inflection point
-T_ILl = zeros(size(T));
-T_IRr = zeros(size(T));
+ind_IL = zeros(size(N_IW));
+ind_IR = zeros(size(N_IW));
+T_ILl  = zeros(size(N_IW));
+T_IRr  = zeros(size(N_IW));
 
 for i = 1:length(N_IW)
     [~,ind_IL(i)] = min(abs(T-(T_IP(i)-w_IW(i)))); % Closest T index to Tinfl-width
@@ -245,7 +242,8 @@ end
 %% Case: Cool  
     case 'cool'
 %% PDF and CDF for Settling Point (SP) + Sampling 
-
+T = flipud(T); %correctly orient data
+Q = flipud(Q);
 % Get a derivative to work with:
 dT = zeros(length(T)-1,1);
 dQ = zeros(length(T)-1,1);
@@ -356,10 +354,10 @@ pdf_IW = 1/(w_IW_max-w_IW_min);
 w_IW = N_IW*(w_IW_max-w_IW_min)+w_IW_min;
 
 % As a last step, let's get the indexes around the sampled inflection pts
-ind_IL = zeros(size(T));  % Lower T than the inflection point
-ind_IR = zeros(size(T));  % Higher T than the inflection point
-T_ILl = zeros(size(T));
-T_IRr = zeros(size(T));
+ind_IL = zeros(size(N_IW));
+ind_IR = zeros(size(N_IW));
+T_ILl  = zeros(size(N_IW));
+T_IRr  = zeros(size(N_IW));
 
 for i = 1:length(N_IW)
     [~,ind_IL(i)] = min(abs(T-(T_IP(i)-w_IW(i)))); % Closest T index to Tinfl-width
@@ -383,6 +381,20 @@ for i = 1:N
     b_SR = P_SR(2);
     
     % Inflection region (IR)
+    if abs(ind_IL(i) - ind_IR(i)) < 1
+        x2 = T(ind_IL(i)+1);
+        x1 = T(ind_IL(i));
+        y2 = Q(ind_IL(i)+1);
+        y1 = Q(ind_IL(i));
+        T_IR = [x1 x2];
+        Q_IR = [y1 y2];
+        P_IR = polyfit(T_IR,Q_IR,1);
+        m_IR = P_IR(1);
+        b_IR = P_IR(2);
+
+        x_intersects(i) = (b_IR-b_SR)/(m_SR-m_IR);
+        y_intersects(i) = m_SR*x_intersects(i)+b_SR;
+    else
     T_IR = T(ind_IL(i):ind_IR(i));
     Q_IR = Q(ind_IL(i):ind_IR(i));
     P_IR = polyfit(T_IR,Q_IR,1);
@@ -391,6 +403,7 @@ for i = 1:N
     
     x_intersects(i) = (b_IR-b_SR)/(m_SR-m_IR);
     y_intersects(i) = m_SR*x_intersects(i)+b_SR;
+    end
 end
        
 %% End Switch Statement
@@ -399,8 +412,9 @@ end
 %% Define Outputs: mean and standard deviation of intersects
 
 % Actual mean and std dev of the y-intersects:
-m_Yint = mean(y_intersects);
-s_Yint = std(y_intersects);
+clean_y = y_intersects(isfinite(y_intersects));
+m_Yint = mean(clean_y);
+s_Yint = std(clean_y);
 
 %% Define Outputs: end of data and associated RMSE noise estimate
 switch Mode
@@ -408,36 +422,37 @@ switch Mode
     % The noise fit is the fit to all the data after 10 degrees from the hook.
     ind_noise = T>T(1)+10;
     T_noise = T(ind_noise);
-    Pr = polyfit(T_noise,Q(ind_noise),3);
+    Pr = polyfit(T_noise,Q(ind_noise),2);
     Q_noise = polyval(Pr,T_noise);
     RMSE_noise = sqrt(sum((Q(ind_noise)-Q_noise).^2)/length(T_noise));
     bottom = Q(1);
-    % if FigOn
-    %     figure;
-    %     hold on
-    %     plot(T,Q)
-    %     plot(T_noise,Q_noise)
-    %     xlabel('Temperature (C)')
-    %     ylabel('Heat Flow (mW)')
-    %     title('Cubic Noise Fit')
-    % end  
+    if FigOn
+        figure;
+        hold on
+        plot(T,Q)
+        plot(T_noise,Q_noise)
+        xlabel('Temperature (C)')
+        ylabel('Heat Flow (mW)')
+        title('Cubic Noise Fit')
+    end  
     
     case 'cool'
     ind_noise = T<T(end)-10;
     T_noise = T(ind_noise);
-    Pr = polyfit(T_noise,Q(ind_noise),3);
+    Pr = polyfit(T_noise,Q(ind_noise),2);
     Q_noise = polyval(Pr,T_noise);
     RMSE_noise = sqrt(sum((Q(ind_noise)-Q_noise).^2)/length(T_noise));
     bottom = Q(end);
-    % if FigOn
-    %     figure;
-    %     hold on
-    %     plot(T,Q)
-    %     plot(T_noise,Q_noise)
-    %     xlabel('Temperature (C)')
-    %     ylabel('Heat Flow (mW)')
-    %     title('Cubic Noise Fit')
-    % end  
+    if FigOn
+        figure;
+        hold on
+        plot(T,Q)
+        plot(T_noise,Q_noise)
+        xlabel('Temperature (C)')
+        ylabel('Heat Flow (mW)')
+        title('Cubic Noise Fit')
+        legend('show')
+    end  
 end
 
 %% Save to output variables
@@ -452,177 +467,177 @@ if FigOn
     switch Mode
         case 'heat'
         %% Settling Point Composite Figure
-%         limX = [min(T),max(T)];
-%         limY1 = [min(Q), max(Q)];
-%         limY2 = [min(dQ), max(dQ)];
-%         limY3 = [0,max(pdf_SP)*1.1];
-% 
-%         figure;
-%         subplot(3,1,1)
-%         hold on
-%         plot(T,Q)
-%         plot(T_SP_min*ones(1,2),limY1,'k--')
-%         plot(T_SP_max*ones(1,2),limY1,'k--')
-% 
-%         ylabel('Heat Flow (mW)')
-%         xlim(limX)
-%         ylim(limY1)
-% 
-%         subplot(3,1,2)
-%         hold on
-%         plot(dT,dQ)
-%         plot(T_SP_min*ones(1,2),limY2,'k--')
-%         plot(T_SP_max*ones(1,2),limY2,'k--')
-%         plot(dT,polyval(P_noise,dT))
-%         plot(dT,polyval(P_noise,dT)+2*RMSE_dNoise,'c--')
-%         plot(dT,polyval(P_noise,dT)-2*RMSE_dNoise,'c--')
-% 
-%         ylabel('dQ/dT')
-%         xlim(limX)
-%         ylim(limY2)
-%         h = zeros(1,1);
-%         h(1) = plot(NaN,NaN,'c--');
-%         legend(h,'+/- 2 RMSE from noise fit')
-% 
-%         subplot(3,1,3)
-%         hold on
-%         plot(T,pdf_SP)
-%         plot(T_SP_min*ones(1,2),limY3,'k--')
-%         plot(T_SP_max*ones(1,2),limY3,'k--')
-% 
-%         xlim(limX)
-%         ylim(limY3)
-%         ylabel('Settling point PDF')
-%         xlabel('Temperature (C)')
-% 
-%         %% Settling width composite figure     
-%         Tmean = mean(T_SP);
-% 
-%         figure;
-%         subplot(3,1,1)
-%         hold on
-%         plot(T,Q)
-%         plot(Tmean*ones(1,2),limY1,'g--')
-%         plot((Tmean+w_min)*ones(1,2),limY1,'k--')
-%         plot((Tmean+w_max)*ones(1,2),limY1,'k--')
-% 
-%         ylabel('Heat Flow (mW)')
-%         xlim(limX)
-%         ylim(limY1)
-% 
-%         subplot(3,1,2)
-%         hold on
-%         plot(dT,dQ)
-%         plot(dT,polyval(P_noise,dT))
-%         plot(Tmean*ones(1,2),limY2,'g--')
-%         plot((Tmean+w_min)*ones(1,2),limY2,'k--')
-%         plot((Tmean+w_max)*ones(1,2),limY2,'k--')
-% 
-%         ylabel('dQ/dT')
-%         xlim(limX)
-%         ylim(limY2)
-% 
-%         subplot(3,1,3)
-%         hold on
-%         plot(T,pdf_SP,'g--')
-%         plot(Tmean+[w_min,w_max],pdf_SW*ones(1,2),'b')
-%         plot(Tmean*ones(1,2),limY3,'g--')
-%         plot((Tmean+w_min)*ones(1,2),limY3,'k--')
-%         plot((Tmean+w_max)*ones(1,2),limY3,'k--')
-% 
-%         xlim(limX)
-%         ylim(limY3)
-%         ylabel('Settling width PDF')
-%         xlabel('Temperature (C)')   
-% 
-%         %% Inflection point composite figure
-% 
-%         limX = [min(T),max(T)];
-%         limY1 = [min(Q), max(Q)];
-%         limY2 = [min(dQ), max(dQ)];
-% %         limY3 = [0,max(pdf_IP)*1.1]; 
-%         limY3 = [0 1.1];
-%         figure;
-%         subplot(3,1,1)
-%         hold on
-%         plot(T,Q)
-%         plot(T_IP_min*ones(1,2),limY1,'k--')
-%         plot(T_IP_max*ones(1,2),limY1,'k--')
-% 
-%         ylabel('Heat Flow (mW)')
-%         xlim(limX)
-%         ylim(limY1)
-% 
-%         subplot(3,1,2)
-%         hold on
-%         plot(dT,dQ)
-%         plot(T_IP_min*ones(1,2),limY2,'k--')
-%         plot(T_IP_max*ones(1,2),limY2,'k--')
-% 
-%         ylabel('dQ/dT')
-%         xlim(limX)
-%         ylim(limY2)
-% 
-%         subplot(3,1,3)
-%         hold on
-%         plot(T,pdf_IP)
-%         plot(T_IP_min*ones(1,2),limY3,'k--')
-%         plot(T_IP_max*ones(1,2),limY3,'k--')
-% 
-%         xlim(limX)
-%         ylim(limY3)
-%         ylabel('Inflection point PDF')
-%         xlabel('Temperature (C)')
-% 
-%         %% Inflection region composite figure
-%         m_IP = mean(T_IP);
-% 
-%         figure;
-%         subplot(3,1,1)
-%         hold on
-%         plot(T,Q)
-%         plot(T_IP_min*ones(1,2),limY1,'g--')
-%         plot(T_IP_max*ones(1,2),limY1,'g--')
-%         plot((m_IP-w_IW_min)*ones(1,2),limY1,'k--')
-%         plot((m_IP-w_IW_max)*ones(1,2),limY1,'k--')
-%         plot((m_IP+w_IW_min)*ones(1,2),limY1,'k:')
-%         plot((m_IP+w_IW_max)*ones(1,2),limY1,'k:')
-% 
-%         ylabel('Heat Flow (mW)')
-%         xlim(limX)
-%         ylim(limY1)
-% 
-%         subplot(3,1,2)
-%         hold on
-%         plot(dT,dQ)
-%         plot(dT,HM*ones(size(dT)),'b:')
-%         plot(T_IP_min*ones(1,2),limY2,'g--')
-%         plot(T_IP_max*ones(1,2),limY2,'g--')
-%         plot((m_IP-w_IW_min)*ones(1,2),limY2,'k--')
-%         plot((m_IP-w_IW_max)*ones(1,2),limY2,'k--')
-%         plot((m_IP+w_IW_min)*ones(1,2),limY2,'k:')
-%         plot((m_IP+w_IW_max)*ones(1,2),limY2,'k:')        
-% 
-%         ylabel('dQ/dT')
-%         xlim(limX)
-%         ylim(limY2)
-% 
-%         subplot(3,1,3)
-%         hold on
-%         plot(T,pdf_IP,'g')
-%         plot(T_IP_min*ones(1,2),limY3,'g--')
-%         plot(T_IP_max*ones(1,2),limY3,'g--')
-%         plot((m_IP-w_IW_min)*ones(1,2),limY3,'k--')
-%         plot((m_IP-w_IW_max)*ones(1,2),limY3,'k--')
-%         plot((m_IP+w_IW_min)*ones(1,2),limY3,'k:')
-%         plot((m_IP+w_IW_max)*ones(1,2),limY3,'k:')       
-%         plot(m_IP-[w_IW_min,w_IW_max],pdf_IW*ones(1,2),'b')
-%         plot(m_IP+[w_IW_min,w_IW_max],pdf_IW*ones(1,2),'b--')
-% 
-%         xlim(limX)
-%         ylim(limY3)
-%         ylabel('Inflection region PDF')
-%         xlabel('Temperature (C)')
+        limX = [min(T),max(T)];
+        limY1 = [min(Q), max(Q)];
+        limY2 = [min(dQ), max(dQ)];
+        limY3 = [0,max(pdf_SP)*1.1];
+
+        % figure;
+        % subplot(3,1,1)
+        % hold on
+        % plot(T,Q)
+        % plot(T_SP_min*ones(1,2),limY1,'k--')
+        % plot(T_SP_max*ones(1,2),limY1,'k--')
+        % 
+        % ylabel('Heat Flow (mW)')
+        % xlim(limX)
+        % ylim(limY1)
+        % 
+        % subplot(3,1,2)
+        % hold on
+        % plot(dT,dQ)
+        % plot(T_SP_min*ones(1,2),limY2,'k--')
+        % plot(T_SP_max*ones(1,2),limY2,'k--')
+        % plot(dT,polyval(P_noise,dT))
+        % plot(dT,polyval(P_noise,dT)+2*RMSE_dNoise,'c--')
+        % plot(dT,polyval(P_noise,dT)-2*RMSE_dNoise,'c--')
+        % 
+        % ylabel('dQ/dT')
+        % xlim(limX)
+        % ylim(limY2)
+        % h = zeros(1,1);
+        % h(1) = plot(NaN,NaN,'c--');
+        % legend(h,'+/- 2 RMSE from noise fit')
+        % 
+        % subplot(3,1,3)
+        % hold on
+        % plot(T,pdf_SP)
+        % plot(T_SP_min*ones(1,2),limY3,'k--')
+        % plot(T_SP_max*ones(1,2),limY3,'k--')
+        % 
+        % xlim(limX)
+        % ylim(limY3)
+        % ylabel('Settling point PDF')
+        % xlabel('Temperature (C)')
+
+        %% Settling width composite figure     
+        Tmean = mean(T_SP);
+
+        % figure;
+        % subplot(3,1,1)
+        % hold on
+        % plot(T,Q)
+        % plot(Tmean*ones(1,2),limY1,'g--')
+        % plot((Tmean+w_min)*ones(1,2),limY1,'k--')
+        % plot((Tmean+w_max)*ones(1,2),limY1,'k--')
+        % 
+        % ylabel('Heat Flow (mW)')
+        % xlim(limX)
+        % ylim(limY1)
+        % 
+        % subplot(3,1,2)
+        % hold on
+        % plot(dT,dQ)
+        % plot(dT,polyval(P_noise,dT))
+        % plot(Tmean*ones(1,2),limY2,'g--')
+        % plot((Tmean+w_min)*ones(1,2),limY2,'k--')
+        % plot((Tmean+w_max)*ones(1,2),limY2,'k--')
+        % 
+        % ylabel('dQ/dT')
+        % xlim(limX)
+        % ylim(limY2)
+        % 
+        % subplot(3,1,3)
+        % hold on
+        % plot(T,pdf_SP,'g--')
+        % plot(Tmean+[w_min,w_max],pdf_SW*ones(1,2),'b')
+        % plot(Tmean*ones(1,2),limY3,'g--')
+        % plot((Tmean+w_min)*ones(1,2),limY3,'k--')
+        % plot((Tmean+w_max)*ones(1,2),limY3,'k--')
+        % 
+        % xlim(limX)
+        % ylim(limY3)
+        % ylabel('Settling width PDF')
+        % xlabel('Temperature (C)')   
+
+        %% Inflection point composite figure
+
+        % limX = [min(T),max(T)];
+        % limY1 = [min(Q), max(Q)];
+        % limY2 = [min(dQ), max(dQ)];
+        % limY3 = [0,max(pdf_IP)*1.1]; 
+        % limY3 = [0 1.1];
+        % figure;
+        % subplot(3,1,1)
+        % hold on
+        % plot(T,Q)
+        % plot(T_IP_min*ones(1,2),limY1,'k--')
+        % plot(T_IP_max*ones(1,2),limY1,'k--')
+        % 
+        % ylabel('Heat Flow (mW)')
+        % xlim(limX)
+        % ylim(limY1)
+        % 
+        % subplot(3,1,2)
+        % hold on
+        % plot(dT,dQ)
+        % plot(T_IP_min*ones(1,2),limY2,'k--')
+        % plot(T_IP_max*ones(1,2),limY2,'k--')
+        % 
+        % ylabel('dQ/dT')
+        % xlim(limX)
+        % ylim(limY2)
+        % 
+        % subplot(3,1,3)
+        % hold on
+        % plot(T,pdf_IP)
+        % plot(T_IP_min*ones(1,2),limY3,'k--')
+        % plot(T_IP_max*ones(1,2),limY3,'k--')
+        % 
+        % xlim(limX)
+        % ylim(limY3)
+        % ylabel('Inflection point PDF')
+        % xlabel('Temperature (C)')
+
+        %% Inflection region composite figure
+        m_IP = mean(T_IP);
+
+        % figure;
+        % subplot(3,1,1)
+        % hold on
+        % plot(T,Q)
+        % plot(T_IP_min*ones(1,2),limY1,'g--')
+        % plot(T_IP_max*ones(1,2),limY1,'g--')
+        % plot((m_IP-w_IW_min)*ones(1,2),limY1,'k--')
+        % plot((m_IP-w_IW_max)*ones(1,2),limY1,'k--')
+        % plot((m_IP+w_IW_min)*ones(1,2),limY1,'k:')
+        % plot((m_IP+w_IW_max)*ones(1,2),limY1,'k:')
+        % 
+        % ylabel('Heat Flow (mW)')
+        % xlim(limX)
+        % ylim(limY1)
+        % 
+        % subplot(3,1,2)
+        % hold on
+        % plot(dT,dQ)
+        % plot(dT,HM*ones(size(dT)),'b:')
+        % plot(T_IP_min*ones(1,2),limY2,'g--')
+        % plot(T_IP_max*ones(1,2),limY2,'g--')
+        % plot((m_IP-w_IW_min)*ones(1,2),limY2,'k--')
+        % plot((m_IP-w_IW_max)*ones(1,2),limY2,'k--')
+        % plot((m_IP+w_IW_min)*ones(1,2),limY2,'k:')
+        % plot((m_IP+w_IW_max)*ones(1,2),limY2,'k:')        
+        % 
+        % ylabel('dQ/dT')
+        % xlim(limX)
+        % ylim(limY2)
+        % 
+        % subplot(3,1,3)
+        % hold on
+        % plot(T,pdf_IP,'g')
+        % plot(T_IP_min*ones(1,2),limY3,'g--')
+        % plot(T_IP_max*ones(1,2),limY3,'g--')
+        % plot((m_IP-w_IW_min)*ones(1,2),limY3,'k--')
+        % plot((m_IP-w_IW_max)*ones(1,2),limY3,'k--')
+        % plot((m_IP+w_IW_min)*ones(1,2),limY3,'k:')
+        % plot((m_IP+w_IW_max)*ones(1,2),limY3,'k:')       
+        % plot(m_IP-[w_IW_min,w_IW_max],pdf_IW*ones(1,2),'b')
+        % plot(m_IP+[w_IW_min,w_IW_max],pdf_IW*ones(1,2),'b--')
+        % 
+        % xlim(limX)
+        % ylim(limY3)
+        % ylabel('Inflection region PDF')
+        % xlabel('Temperature (C)')
 
         %% Chosen values with comparison to previous method
         
@@ -639,15 +654,16 @@ if FigOn
         % plot(T(ind_IP),Q(ind_IP),'ro')
         % xlabel('Temperature (C)')
         % ylabel('Heat Flow (mW)')
-     
+        % 
         case 'cool'
+        
         %% Settling Point composite figure
-        
-        limX = [min(T),max(T)];
-        limY1 = [min(Q), max(Q)];
-        limY2 = [min(dQ), max(dQ)];
-        limY3 = [0,max(pdf_SP)*1.1];
-        
+        % 
+        % limX = [min(T),max(T)];
+        % limY1 = [min(Q), max(Q)];
+        % limY2 = [min(dQ), max(dQ)];
+        % limY3 = [0,max(pdf_SP)*1.1];
+        % 
         % figure;
         % subplot(3,1,1)
         % hold on
@@ -823,48 +839,48 @@ if FigOn
         hook_var(T, Q, hook_T, 0.75, 10, 5, false, true);
         % ^ Makes a figure with construction lines
         hold on
-        % plot(x_intersects,y_intersects,'o','MarkerEdgeColor',[128/255 128/255 128/255])
-        % plot(T,Q,'k')
-        % plot(T(ind_SW),Q(ind_SW),'go')
-        % plot(T(ind_SP),Q(ind_SP),'mo')
-        % plot(T(ind_IL),Q(ind_IL),'bo')
-        % plot(T(ind_IR),Q(ind_IR),'bo')
-        % plot(T(ind_IP),Q(ind_IP),'ro')
-        % xlabel('Temperature (C)')
-        % ylabel('Heat Flow (mW)')
+        plot(x_intersects,y_intersects,'o','MarkerEdgeColor',[128/255 128/255 128/255])
+        plot(T,Q,'k')
+        plot(T(ind_SW),Q(ind_SW),'go')
+        plot(T(ind_SP),Q(ind_SP),'mo')
+        plot(T(ind_IL),Q(ind_IL),'bo')
+        plot(T(ind_IR),Q(ind_IR),'bo')
+        plot(T(ind_IP),Q(ind_IP),'ro')
+        xlabel('Temperature (C)')
+        ylabel('Heat Flow (mW)')
         
     end
     
     %% Histogran of y intersects and variable effects
-    % figure;
-    % hold on
-    % h = histogram(y_intersects);
-    % title('y-intersects')
-    % y_h = (h.Values)';
-    % x_h = (h.BinEdges(1:end-1)+h.BinWidth/2)';
-    % F_h = fit(x_h, y_h, 'gauss1');
-    % plot(x_h,F_h(x_h),'r')
-    % 
-    % figure;
-    % subplot(2,2,1)
-    % plot(T_SP,y_intersects,'o')
-    % xlabel('Settling Point')
-    % ylabel('Y intersect')
-    % 
-    % subplot(2,2,2)
-    % plot(w_SW,y_intersects,'o')
-    % xlabel('Settling Width')
-    % ylabel('Y intersect')
-    % 
-    % subplot(2,2,3)
-    % plot(T_IP,y_intersects,'o')
-    % xlabel('Inflection Point')
-    % ylabel('Y intersect')
-    % 
-    % subplot(2,2,4)
-    % plot(w_IW,y_intersects,'o')
-    % xlabel('Inflection Width')
-    % ylabel('Y intersect')
+    figure;
+    hold on
+    h = histogram(y_intersects);
+    title('y-intersects')
+    y_h = (h.Values)';
+    x_h = (h.BinEdges(1:end-1)+h.BinWidth/2)';
+    F_h = fit(x_h, y_h, 'gauss1');
+    plot(x_h,F_h(x_h),'r')
+
+    figure;
+    subplot(2,2,1)
+    plot(T_SP,y_intersects,'o')
+    xlabel('Settling Point')
+    ylabel('Y intersect')
+
+    subplot(2,2,2)
+    plot(w_SW,y_intersects,'o')
+    xlabel('Settling Width')
+    ylabel('Y intersect')
+
+    subplot(2,2,3)
+    plot(T_IP,y_intersects,'o')
+    xlabel('Inflection Point')
+    ylabel('Y intersect')
+
+    subplot(2,2,4)
+    plot(w_IW,y_intersects,'o')
+    xlabel('Inflection Width')
+    ylabel('Y intersect')
 
 end
 

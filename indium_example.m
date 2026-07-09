@@ -145,7 +145,6 @@ for F = 1 : length(dinfo)  % Outer loop: iterate over matched files (typically j
         % Automatically detect the left and right baseline bounds of the
         % melting peak using the find_lefts_rights_mc function
         [T_ll, T_lr, T_rl, T_rr, ~, ~] = find_lefts_rights_mc(testT, testQ);
-
         % Integrate the melting peak area using a spline baseline correction.
         % Returns enthalpy (hcrys), corrected temperature (Tout), and heat flow (Qout).
         [hcrys, Tout, Qout] = spline_integral_orig(testT, testQ, T_ll, T_lr, T_rl, T_rr);
@@ -168,14 +167,15 @@ for F = 1 : length(dinfo)  % Outer loop: iterate over matched files (typically j
         % thermal lag between sample and sensor. Its height is used as an
         % independent mass estimator via the heat capacity (Cp).
 
-        for P = 1:N
-            if isnan(T_rl_means(:, 2))
+        for P = 3:2:9
+            if isnan(T_rl_means(:, P))
             else
             testT = Tr_all(1:lengths_ind(:, 1),P);
             testQ = Q_all(1:lengths_ind(:, 1),P);
-            excl = find(testT < T_lr_means(:, 2) | testT > T_rl_means(:, 2));
+            [~, T_lr_P, T_rl_P, ~, ~, ~] = find_lefts_rights_mc(testT, testQ);
+            excl = find(testT < mean(T_lr_P) | testT > mean(T_rl_P));
             try 
-            [h_start, h_end, detail] = hook_MC_QAD(flipud(testT(excl)),flipud(testQ(excl)),0,1000);
+            [h_start, h_end, detail] = hook_MC_QAD((testT(excl)),(testQ(excl)),0,1000);
             % h_start has form [value, noise]
             % h_end has form [mean value, std]
             % detail has form [mode, LOOCV SP, x_intersect (mean, std)]
@@ -186,7 +186,7 @@ for F = 1 : length(dinfo)  % Outer loop: iterate over matched files (typically j
             hookstd(P) = h_end(2);
             x_inter_mean(P) = detail{3}(1);
             x_inter_std(P) = detail{3}(2);
-            catch
+            catch ME; disp(ME.message)
                 hookheights(P) = NaN;
                 hooknoise(P) = NaN;
                 hookstd(P) = NaN;
@@ -222,29 +222,30 @@ for F = 1 : length(dinfo)  % Outer loop: iterate over matched files (typically j
     % Estimate sample mass from enthalpy method: divide integrated heat (mJ)
     % by heating rate (K/s) and indium's specific enthalpy of fusion (28.6 J/g),
     % converting to nanograms (factor of 1e-9)
-    mass_hcrys = abs(hcrys_mean * 1e-3 ./ HRs ./ 28.6 / 1e-9);
+    h_fusion = 28.6;
+    mass_hcrys = abs(hcrys_mean * 1e-3 ./ HRs ./ h_fusion / 1e-9)
 
     % Estimate sample mass from hook method: divide hook height (mW offset)
     % by heating rate and indium's Cp (0.23 J/g/K), converting to nanograms
-    mass_hook = abs(hookheights * 1e-3 ./ HRs ./ 0.23 / 1e-9);
+    heat_capacity = 0.23;
+    mass_hook = abs(hookheights * 1e-3 ./ HRs ./ heat_capacity / 1e-9)
 
     %% Compare enthalpies (runs 1–9): mass estimates vs. heating rate
     figure()
     % Enthalpy-derived mass (moving peak bounds) — filled blue dots
-    semilogx(HRs(1:9), abs(hcrys_mean(1:9)) * 1e-3 ./ Q_all(1:9) ./ 28.6 / 1e-9, ...
+    semilogx(HRs(1:9), abs(hcrys_mean(1:9)) * 1e-3 ./ Q_all(1:9) ./ h_fusion / 1e-9, ...
         '.b', 'markersize', 36, 'linewidth', 2)
     hold on
     % Hook-derived mass — blue crosses
-    semilogx(HRs(1:9), abs(hookheights(1:9)) * 1e-3 ./ Q_all(1:9) ./ 0.23 / 1e-9, ...
+    semilogx(HRs(1:9), abs(hookheights(1:9)) * 1e-3 ./ Q_all(1:9) ./ heat_capacity / 1e-9, ...
         'xb', 'markersize', 12, 'linewidth', 2)
     xlim([4e-1 2e4])
     ylim([1e3 6e3])
     ylabel("Estimated mass (ng)")
     xlabel("Heating rate (K/s)")
     set(gca, 'fontsize', 24)
-    legend("Enthalpy (moving peak)", "Enthalpy (fixed peak)", "Hook", "Hook with heat loss", ...
-        'location', 'best')
-
+    legend("Enthalpy (moving peak)", "Hook", 'location', 'best')
+    hold off
     % %% Compare enthalpy vs. hook mass estimates as a function of sample mass
     % % Restrict to runs with physically meaningful heating rates (0.1–2000 K/s)
     excl2 = find(Q_all < 2e3 & Q_all > 0.1);
@@ -254,6 +255,7 @@ for F = 1 : length(dinfo)  % Outer loop: iterate over matched files (typically j
     loglog(mass_hcrys(1:9), mass_hook(1:9), 'or', 'markersize', 12)
     hold on
     loglog(dummy, dummy)  % 1:1 line — perfect agreement between both mass estimators
+    hold off
     % Note: agreement is sensitive to accuracy of the heating rate estimate
 
     %% Ratio of hook mass to enthalpy mass as a function of heating rate
@@ -273,8 +275,8 @@ for F = 1 : length(dinfo)  % Outer loop: iterate over matched files (typically j
 
     % Plot ratio: hook mass / enthalpy mass for each valid segment
     semilogx(HRs(subs), ...
-        (abs(hookheights(subs)) * 1e-3 ./ Q_all(subs) ./ 0.23 / 1e-9) ./ ...
-        (abs(hcrys_mean(subs)) * 1e-3 ./ Q_all(subs) ./ 28.6 / 1e-9), ...
+        (abs(hookheights(subs)) * 1e-3 ./ Q_all(subs) ./ heat_capacity / 1e-9) ./ ...
+        (abs(hcrys_mean(subs)) * 1e-3 ./ Q_all(subs) ./ h_fusion / 1e-9), ...
         '.b', 'markersize', 36, 'linewidth', 2)
 
     yline(1, 'k:', 'linewidth', 2)  % Reference line at ratio = 1 (perfect agreement)
@@ -284,4 +286,54 @@ for F = 1 : length(dinfo)  % Outer loop: iterate over matched files (typically j
     xlim([5e-1 2e4])
     ylim([0.75 1.25])
 
+    % %% plotting segment with respective mass calculations (Normalized Vertical Scale)
+    % 
+    % % --- FIRST PASS: Determine global min and max for the segments ---
+    % global_ymin = Inf;
+    % global_ymax = -Inf;
+    % 
+    % for t = 2:N
+    %     seg_len = lengths_ind(t-1);
+    %     segment_Q = Q_all(1:seg_len, t);
+    % 
+    %     % Track the lowest and highest values across all plotted segments
+    %     global_ymin = min(global_ymin, min(segment_Q, [], 'omitnan'));
+    %     global_ymax = max(global_ymax, max(segment_Q, [], 'omitnan'));
+    % end
+    % 
+    % % Add 5% padding to the global range so curves don't clip the edges
+    % yrange = global_ymax - global_ymin;
+    % ypad = 0.05 * yrange;
+    % segment_ylims = [global_ymin - ypad, global_ymax + ypad];
+    % 
+    % % --- SECOND PASS: Plot each segment using the shared y-limits ---
+    % for t = 2:N  % segment 1 isn't a real heating ramp, skip it
+    %     figure(t)
+    %     clf
+    %     hold on
+    %     seg_len = lengths_ind(t-1);  % valid data length for this segment
+    % 
+    %     plot(Tr_all(1:seg_len, t), Q_all(1:seg_len, t), '-', ...
+    %         'LineWidth', 0.5, 'DisplayName', ['Segment ' num2str(t)])
+    % 
+    %     set(gca, 'FontSize', 15)
+    %     xlabel('Temperature (\circC)', 'FontSize', 20)
+    %     ylabel('Power (mW)', 'FontSize', 20)
+    %     title(['Segment ' num2str(t) ' - HR = ' num2str(HRs(t), '%.1f') ' K/s'], ...
+    %         'Interpreter', 'none')
+    % 
+    %     % Enforce universal x and y limits across all segment figures
+    %     xlim([20 325])
+    %     ylim(segment_ylims)
+    % 
+    %     % Place text labels using the fixed global limits 
+    %     text_x = 30;
+    %     text_y1 = segment_ylims(2) - 0.05 * yrange;
+    %     text_y2 = segment_ylims(2) - 0.12 * yrange;
+    % 
+    %     text(text_x, text_y1, sprintf('Mass (hook) = %.1f ng', mass_hook(t)), 'FontSize', 10)
+    %     text(text_x, text_y2, sprintf('Mass (enthalpy) = %.1f ng', mass_hcrys(t)), 'FontSize', 10)
+    %     legend('show')
+    %     hold off
+    % end
 end
