@@ -61,7 +61,7 @@ clear
 
 %%
 % Point to the specific indium calibration data file
-dinfo = dir('cle_ind_baseline_06222026.txt');
+dinfo = dir('cle_ind_25to650C_07152026_1.txt');
 
 for F = 1 : length(dinfo)  % Outer loop: iterate over matched files (typically just 1)
     fname = dinfo(F).name;  % Get filename
@@ -69,9 +69,9 @@ for F = 1 : length(dinfo)  % Outer loop: iterate over matched files (typically j
     data = readmatrix(fname, 'NumHeaderLines', 5);
 
     % Define column indices within the data matrix
-    tsindex = 2; % Sample temperature (Ts), °C
-    trindex = 3; % Reference temperature (Tr), °C
-    vindex  = 4; % Heat flow, mW
+    tsindex = 3; % Sample temperature (Ts), °C
+    trindex = 4; % Reference temperature (Tr), °C
+    vindex  = 5; % Heat flow, mW
 
     segment_number = 1;  % Tracks which DSC heating segment (ramp) we are in
     outputRow = 0;       % Row index within the current segment
@@ -132,6 +132,7 @@ for F = 1 : length(dinfo)  % Outer loop: iterate over matched files (typically j
     cend_1 = find(isnan(Q_all(:,2)), 1);
 
     for K = 2:N  % Loop over all segments
+
         % Find the last valid row for this segment
         cend = find(isnan(Q_all(:,K)), 1);
         if isempty(cend)
@@ -167,13 +168,13 @@ for F = 1 : length(dinfo)  % Outer loop: iterate over matched files (typically j
         % thermal lag between sample and sensor. Its height is used as an
         % independent mass estimator via the heat capacity (Cp).
 
-        for P = 3:2:9
-            if isnan(T_rl_means(:, P))
+        for P = 2:N
+            if isnan(T_rl_means(:, 2))
             else
-            testT = Tr_all(1:lengths_ind(:, 1),P);
-            testQ = Q_all(1:lengths_ind(:, 1),P);
+            testT = Tr_all(1:lengths_ind(1),P);
+            testQ = Q_all(1:lengths_ind(1),P);
             [~, T_lr_P, T_rl_P, ~, ~, ~] = find_lefts_rights_mc(testT, testQ);
-            excl = find(testT < mean(T_lr_P) | testT > mean(T_rl_P));
+            excl = find(testT < mean(T_lr_P));
             try 
             [h_start, h_end, detail] = hook_MC_QAD((testT(excl)),(testQ(excl)),0,1000);
             % h_start has form [value, noise]
@@ -186,7 +187,7 @@ for F = 1 : length(dinfo)  % Outer loop: iterate over matched files (typically j
             hookstd(P) = h_end(2);
             x_inter_mean(P) = detail{3}(1);
             x_inter_std(P) = detail{3}(2);
-            catch ME; disp(ME.message)
+            catch
                 hookheights(P) = NaN;
                 hooknoise(P) = NaN;
                 hookstd(P) = NaN;

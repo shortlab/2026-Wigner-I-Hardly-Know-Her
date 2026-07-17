@@ -641,8 +641,8 @@ if FigOn
 
         %% Chosen values with comparison to previous method
         
-        hook_T = T(1);  
-        hook_var(T, Q, hook_T, 0.75, 10, 5, true, true);
+        % hook_T = T(1);  
+        % hook_var(T, Q, hook_T, 0.75, 10, 5, true, true);
         % ^ Makes a figure with construction lines
         % hold on
         % plot(x_intersects,y_intersects,'o','MarkerEdgeColor',[128/255 128/255 128/255])
@@ -835,52 +835,52 @@ if FigOn
         
         %% Chosen values with comparison to previous method
         
-        hook_T = T(end);        
-        hook_var(T, Q, hook_T, 0.75, 10, 5, false, true);
+        % hook_T = T(end);        
+        % hook_var(T, Q, hook_T, 0.75, 10, 5, false, true);
         % ^ Makes a figure with construction lines
-        hold on
-        plot(x_intersects,y_intersects,'o','MarkerEdgeColor',[128/255 128/255 128/255])
-        plot(T,Q,'k')
-        plot(T(ind_SW),Q(ind_SW),'go')
-        plot(T(ind_SP),Q(ind_SP),'mo')
-        plot(T(ind_IL),Q(ind_IL),'bo')
-        plot(T(ind_IR),Q(ind_IR),'bo')
-        plot(T(ind_IP),Q(ind_IP),'ro')
-        xlabel('Temperature (C)')
-        ylabel('Heat Flow (mW)')
+        % hold on
+        % plot(x_intersects,y_intersects,'o','MarkerEdgeColor',[128/255 128/255 128/255])
+        % plot(T,Q,'k')
+        % plot(T(ind_SW),Q(ind_SW),'go')
+        % plot(T(ind_SP),Q(ind_SP),'mo')
+        % plot(T(ind_IL),Q(ind_IL),'bo')
+        % plot(T(ind_IR),Q(ind_IR),'bo')
+        % plot(T(ind_IP),Q(ind_IP),'ro')
+        % xlabel('Temperature (C)')
+        % ylabel('Heat Flow (mW)')
         
     end
     
     %% Histogran of y intersects and variable effects
-    figure;
-    hold on
-    h = histogram(y_intersects);
-    title('y-intersects')
-    y_h = (h.Values)';
-    x_h = (h.BinEdges(1:end-1)+h.BinWidth/2)';
-    F_h = fit(x_h, y_h, 'gauss1');
-    plot(x_h,F_h(x_h),'r')
-
-    figure;
-    subplot(2,2,1)
-    plot(T_SP,y_intersects,'o')
-    xlabel('Settling Point')
-    ylabel('Y intersect')
-
-    subplot(2,2,2)
-    plot(w_SW,y_intersects,'o')
-    xlabel('Settling Width')
-    ylabel('Y intersect')
-
-    subplot(2,2,3)
-    plot(T_IP,y_intersects,'o')
-    xlabel('Inflection Point')
-    ylabel('Y intersect')
-
-    subplot(2,2,4)
-    plot(w_IW,y_intersects,'o')
-    xlabel('Inflection Width')
-    ylabel('Y intersect')
+    % figure;
+    % hold on
+    % h = histogram(y_intersects);
+    % title('y-intersects')
+    % y_h = (h.Values)';
+    % x_h = (h.BinEdges(1:end-1)+h.BinWidth/2)';
+    % F_h = fit(x_h, y_h, 'gauss1');
+    % plot(x_h,F_h(x_h),'r')
+    % 
+    % figure;
+    % subplot(2,2,1)
+    % plot(T_SP,y_intersects,'o')
+    % xlabel('Settling Point')
+    % ylabel('Y intersect')
+    % 
+    % subplot(2,2,2)
+    % plot(w_SW,y_intersects,'o')
+    % xlabel('Settling Width')
+    % ylabel('Y intersect')
+    % 
+    % subplot(2,2,3)
+    % plot(T_IP,y_intersects,'o')
+    % xlabel('Inflection Point')
+    % ylabel('Y intersect')
+    % 
+    % subplot(2,2,4)
+    % plot(w_IW,y_intersects,'o')
+    % xlabel('Inflection Width')
+    % ylabel('Y intersect')
 
 end
 

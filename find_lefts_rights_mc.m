@@ -23,10 +23,6 @@ function [ll, lr, rl, rr, dTmax, dTmin] = find_lefts_rights_mc(T, Q)
 % Nov 2024 version
 T = T(:);
 Q = Q(:);
-% Remove repeated temperature values to avoid Inf in derivative
-valid = [true; diff(T) ~= 0];
-T = T(valid);
-Q = Q(valid);
 %if there are too few points, skips the segment
 if length(T) < 50
     ll = []; lr = []; rl = []; rr = []; dTmax = NaN; dTmin = NaN;
