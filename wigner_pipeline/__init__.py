@@ -1,0 +1,1 @@
+"""Wigner analysis pipeline package."""
