@@ -1,0 +1,44 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Pipeline: parser-smoke",
+      "type": "debugpy",
+      "request": "launch",
+      "program": "${workspaceFolder}/run_pipeline.py",
+      "console": "integratedTerminal",
+      "cwd": "${workspaceFolder}",
+      "args": [
+        "parser-smoke",
+        "--file",
+        "cle_ind_baseline_25to650C_200kps_07292026.txt"
+      ]
+    },
+    {
+      "name": "Pipeline: interface-experiment",
+      "type": "debugpy",
+      "request": "launch",
+      "program": "${workspaceFolder}/run_pipeline.py",
+      "console": "integratedTerminal",
+      "cwd": "${workspaceFolder}",
+      "args": [
+        "run-interface-experiment",
+        "--workspace",
+        "."
+      ]
+    },
+    {
+      "name": "Pipeline: indium-analysis",
+      "type": "debugpy",
+      "request": "launch",
+      "program": "${workspaceFolder}/run_pipeline.py",
+      "console": "integratedTerminal",
+      "cwd": "${workspaceFolder}",
+      "args": [
+        "run-indium-analysis",
+        "--file",
+        "cle_ind_baseline_25to650C_200kps_07292026.txt"
+      ]
+    }
+  ]
+}

@@ -14,6 +14,7 @@ _MASS_RE = re.compile(r",\s*([\d.]+)\s*mg", re.IGNORECASE)
 
 
 def _to_float(token: str) -> float:
+    """Parse numeric tokens while preserving explicit NaN markers."""
     token = token.strip()
     if token.lower() == "nan":
         return float("nan")
@@ -21,6 +22,7 @@ def _to_float(token: str) -> float:
 
 
 def _is_data_line(line: str) -> bool:
+    """Return True when a text line starts with an integer row index."""
     s = line.strip()
     if not s:
         return False
@@ -33,6 +35,7 @@ def _is_data_line(line: str) -> bool:
 
 
 def _parse_stare_blocks(path: Path, lines: list[str]) -> list[Segment]:
+    """Parse STAR(e)-style exported blocks delimited by 'Curve Values:' headers."""
     starts = [i for i, ln in enumerate(lines) if _CURVE_VALUES_RE.search(ln)]
     if not starts:
         return []
@@ -113,6 +116,7 @@ def _parse_stare_blocks(path: Path, lines: list[str]) -> list[Segment]:
 
 
 def _parse_multipart_numeric(path: Path, lines: list[str]) -> list[Segment]:
+    """Parse plain numeric exports that separate segments by index reset to 0."""
     rows: list[list[float]] = []
     for ln in lines:
         s = ln.strip()
@@ -185,6 +189,7 @@ def _parse_multipart_numeric(path: Path, lines: list[str]) -> list[Segment]:
 
 
 def parse_segments(path: str | Path) -> list[Segment]:
+    """Parse one text export into ordered heating/cooling Segment objects."""
     p = Path(path)
     lines = p.read_text(encoding="latin-1", errors="replace").splitlines()
     segments = _parse_stare_blocks(p, lines)
@@ -194,6 +199,7 @@ def parse_segments(path: str | Path) -> list[Segment]:
 
 
 def parser_smoke(path: str | Path) -> dict:
+    """Return a compact parse summary for quick parser validation/debugging."""
     segs = parse_segments(path)
     if not segs:
         raise RuntimeError(f"No segments parsed from {path}")

@@ -6,6 +6,7 @@ from scipy.signal import medfilt, savgol_filter
 
 
 def _safe_std(v: np.ndarray, default: float = 1e-3) -> float:
+    """Return finite std estimate with a small fallback to avoid zero-width bands."""
     s = float(np.nanstd(v))
     if not np.isfinite(s) or s < 1e-12:
         return default
@@ -19,6 +20,32 @@ def find_lefts_rights_mc(
     seed: int | None = None,
     peak_window: tuple[float, float] | None = None,
 ) -> dict | None:
+    """Detect Monte Carlo integration bounds around a DSC transition.
+
+    Parameters
+    ----------
+    t : np.ndarray
+        Temperature values in degrees C.
+    q : np.ndarray
+        Heat-flow values in mW, same sampling as ``t``.
+    n_samples : int, default 1000
+        Number of Monte Carlo boundary draws.
+    seed : int | None, default None
+        RNG seed for reproducible boundary sampling.
+    peak_window : tuple[float, float] | None, default None
+        Optional temperature window (deg C) used to pre-crop data before
+        derivative-based boundary detection.
+
+    Returns
+    -------
+    dict | None
+        ``None`` when there are too few valid points or no left boundary is
+        found. Otherwise returns sampled arrays ``ll``, ``lr``, ``rl``, ``rr``
+        (all in deg C) plus derivative extrema locations ``dTmax``/``dTmin``
+        and center boundaries ``lrcenter``/``rlcenter`` in deg C.
+    """
+    # Flatten inputs and remove NaN/inf rows early so all downstream indexing
+    # works on clean vectors.
     t = np.asarray(t, dtype=float).ravel()
     q = np.asarray(q, dtype=float).ravel()
     valid = np.isfinite(t) & np.isfinite(q)
@@ -26,6 +53,8 @@ def find_lefts_rights_mc(
     if len(t) < 50:
         return None
 
+    # Sort by temperature and drop duplicate x values. This keeps derivative and
+    # interpolation behavior stable when raw exports contain repeated temperatures.
     order = np.argsort(t)
     t, q = t[order], q[order]
     keep = np.concatenate(([True], np.diff(t) != 0))
@@ -42,6 +71,7 @@ def find_lefts_rights_mc(
     if frame >= len(t):
         frame = max(5, len(t) - (1 - len(t) % 2))
 
+    # Smooth before differentiating to reduce noise-amplification in dQ/dT.
     q_smooth = savgol_filter(q, window_length=frame, polyorder=3)
     dqdt = np.diff(q_smooth) / np.diff(t)
     dqdt = medfilt(dqdt, kernel_size=5)
@@ -57,6 +87,8 @@ def find_lefts_rights_mc(
     mu_left, sd_left = float(np.mean(d_left)), _safe_std(d_left)
     mu_right, sd_right = float(np.mean(d_right)), _safe_std(d_right, sd_left)
 
+    # Boundary heuristic: locate where derivative returns near baseline bands on
+    # left/right sides, progressively widening tolerance if needed.
     lrloc = None
     for m in range(1, 21):
         idx = np.where(np.abs(dqdt[: max(left_end, 1)] - mu_left) <= sd_left * m)[0]
@@ -79,6 +111,8 @@ def find_lefts_rights_mc(
     if lr_center > rl_center:
         lr_center, rl_center = rl_center, lr_center
 
+    # Sample boundary uncertainty windows (MATLAB-parity style) for Monte Carlo
+    # propagation through the integral.
     rng = np.random.default_rng(seed)
     ll = rng.uniform(lr_center - 17, lr_center - 13, n_samples)
     lr = rng.uniform(lr_center - 2, lr_center + 2, n_samples)
@@ -103,7 +137,38 @@ def spline_integral_orig(
     t_lr: np.ndarray | float,
     t_rl: np.ndarray | float,
     t_rr: np.ndarray | float,
+    baseline_fit_offset_mw: float = 1.0,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """Integrate baseline-corrected DSC peak area for MC boundary draws.
+
+    Parameters
+    ----------
+    t_data : np.ndarray
+        Temperature vector in degrees C.
+    q_data : np.ndarray
+        Heat-flow vector in mW.
+    t_ll, t_lr, t_rl, t_rr : np.ndarray | float
+        Left/inner and right/inner integration boundaries in degrees C.
+        Scalars are broadcast to match vector-shaped Monte Carlo draws.
+    baseline_fit_offset_mw : float, default 1.0
+        Constant heat-flow offset subtracted from left/right baseline-anchor
+        data before linear fitting. The default 1.0 mW keeps MATLAB parity.
+
+    Returns
+    -------
+    tuple[np.ndarray, np.ndarray, np.ndarray]
+        ``hcrys``: integrated absolute residual area per draw in mW*degC
+        (equivalent to mW*K difference in scale).
+        ``tout``: per-draw corrected temperature vectors (deg C), NaN-padded.
+        ``qout``: per-draw baseline-corrected heat-flow vectors (mW), NaN-padded.
+
+    Notes
+    -----
+    By default, a MATLAB-parity 1.0 mW offset is retained in baseline linear
+    fits, and absolute residuals are integrated to preserve legacy behavior.
+    """
+    # Scalar or vector bounds are accepted. Scalar bounds are broadcast across
+    # all Monte Carlo draws for convenience.
     t = np.asarray(t_data, dtype=float).ravel()
     q = np.asarray(q_data, dtype=float).ravel()
     valid = np.isfinite(t) & np.isfinite(q)
@@ -128,6 +193,7 @@ def spline_integral_orig(
     qout = np.full((len(t), n), np.nan, dtype=float)
 
     for i in range(n):
+        # Left/right are baseline anchor regions; corr is full integrated window.
         left = (t > ll[i]) & (t < lr[i])
         right = (t > rl[i]) & (t < rr[i])
         corr = (t > ll[i]) & (t < rr[i])
@@ -137,13 +203,15 @@ def spline_integral_orig(
         tc = t[corr]
         qc = q[corr]
 
+        # If either side lacks points, fall back to simple endpoint baseline.
         if np.count_nonzero(left) < 2 or np.count_nonzero(right) < 2:
             baseline = np.interp(tc, [tc[0], tc[-1]], [qc[0], qc[-1]])
         else:
             t_left, q_left = t[left], q[left]
             t_right, q_right = t[right], q[right]
-            p_left = np.polyfit(t_left, q_left - 1.0, 1)
-            p_right = np.polyfit(t_right, q_right - 1.0, 1)
+            # Keep MATLAB-style offset in linear baseline fits for parity.
+            p_left = np.polyfit(t_left, q_left - baseline_fit_offset_mw, 1)
+            p_right = np.polyfit(t_right, q_right - baseline_fit_offset_mw, 1)
             t_fit = np.concatenate([t_right, t_left])
             q_fit = np.concatenate([
                 np.polyval(p_right, t_right),
@@ -151,12 +219,14 @@ def spline_integral_orig(
             ])
             uniq_t, uniq_idx = np.unique(t_fit, return_index=True)
             uniq_q = q_fit[uniq_idx]
+            # Cubic interpolation needs enough unique knots; otherwise fallback.
             if len(uniq_t) < 3:
                 baseline = np.interp(tc, [tc[0], tc[-1]], [qc[0], qc[-1]])
             else:
                 f = interp1d(uniq_t, uniq_q, kind="cubic", fill_value="extrapolate")
                 baseline = f(tc)
 
+        # Absolute residual area is integrated as in legacy workflow.
         q_corr = np.abs(qc - baseline)
         hcrys[i] = np.trapezoid(q_corr, tc) if len(tc) > 1 else np.nan
         tout[: len(tc), i] = tc
@@ -173,6 +243,35 @@ def hook_mc_qad(
     mode: str | None = None,
     seed: int | None = None,
 ) -> tuple[np.ndarray, np.ndarray, list, np.ndarray, np.ndarray]:
+    """Estimate DSC hook start/end levels via Monte Carlo line intersections.
+
+    Parameters
+    ----------
+    t : np.ndarray
+        Temperature vector in degrees C for the hook-only region.
+    q : np.ndarray
+        Heat-flow vector in mW for the same region.
+    fig_on : bool, default False
+        Kept for API compatibility with MATLAB workflow; plotting is disabled.
+    n : int, default 1000
+        Number of Monte Carlo draws for settling/inflection region sampling.
+    mode : str | None, default None
+        ``"heat"`` or ``"cool"``; auto-detected when omitted.
+    seed : int | None, default None
+        RNG seed for reproducible Monte Carlo sampling.
+
+    Returns
+    -------
+    tuple[np.ndarray, np.ndarray, list, np.ndarray, np.ndarray]
+        ``h_start``: ``[start_level_mW, noise_proxy]`` where noise proxy comes
+        from derivative-fit RMSE.
+        ``h_settle``: ``[mean_end_level_mW, std_end_level_mW]`` from
+        intersection y-values across MC draws.
+        ``detail``: ``[mode, loocv_placeholder, x_intersect_stats]`` where
+        ``x_intersect_stats`` is ``[mean_degC, std_degC]``.
+        ``ind_il`` and ``ind_ir``: sampled left/right inflection-region indices
+        used per draw.
+    """
     del fig_on
     t = np.asarray(t, dtype=float).ravel()
     q = np.asarray(q, dtype=float).ravel()
@@ -183,10 +282,14 @@ def hook_mc_qad(
     if len(t) < 10:
         return np.array([np.nan, np.nan]), np.array([np.nan, np.nan]), ["heat", np.nan, np.array([np.nan, np.nan])], np.array([]), np.array([])
 
+    # Auto mode selection: whichever endpoint is farther from mean is treated as
+    # the hook side (mirrors MATLAB intent).
     if mode is None:
         d_avg = np.mean(q)
         mode = "cool" if abs(q[0] - d_avg) < abs(q[-1] - d_avg) else "heat"
 
+    # Cool branch is normalized by flipping arrays so computations can reuse
+    # heat-like directional logic.
     if mode == "cool":
         t = np.flipud(t)
         q = np.flipud(q)
@@ -208,6 +311,7 @@ def hook_mc_qad(
     if np.count_nonzero(noise_mask) < 5:
         noise_mask = np.ones_like(dt, dtype=bool)
 
+    # Quadratic noise fit on "settled" region used for thresholding and RMSE.
     p_noise = np.polyfit(dt[noise_mask], dq[noise_mask], 2)
     dq_noise = np.polyval(p_noise, dt[noise_mask])
     rmse = float(np.sqrt(np.mean((dq[noise_mask] - dq_noise) ** 2)))
@@ -228,6 +332,7 @@ def hook_mc_qad(
         t_sp_max = t[settles[-1]]
         t_sp_min = t_sp_max - 5.0
 
+    # Monte Carlo sampling of settling point and widths.
     v_sp = n_sp * (t_sp_max - t_sp_min) + t_sp_min
     ind_sp = np.array([int(np.argmin(np.abs(t - v))) for v in v_sp], dtype=int)
     t_sp = t[ind_sp]
@@ -267,6 +372,8 @@ def hook_mc_qad(
     ind_il = np.array([int(np.argmin(np.abs(t - (t_ip[i] - w_iw[i])))) for i in range(n)], dtype=int)
     ind_ir = np.array([int(np.argmin(np.abs(t - (t_ip[i] + w_iw[i])))) for i in range(n)], dtype=int)
 
+    # For each draw: fit settled-region and inflection-region lines and take
+    # their intersection as hook "end" estimate.
     y_intersects = np.full(n, np.nan, dtype=float)
     x_intersects = np.full(n, np.nan, dtype=float)
     for i in range(n):
@@ -299,6 +406,8 @@ def hook_mc_qad(
     else:
         h_settle = np.array([float(np.mean(clean_y)), float(np.std(clean_y))], dtype=float)
 
+    # h_start is endpoint level + derivative-noise proxy; h_settle summarizes
+    # intersection y-values across MC draws.
     q_start = float(q[0]) if mode == "heat" else float(q[-1])
     h_start = np.array([q_start, rmse], dtype=float)
 

@@ -10,6 +10,7 @@ from .workflows.interface_experiment import run_interface_experiment
 
 
 def _build_parser() -> argparse.ArgumentParser:
+    """Build CLI argument parser and subcommands for all pipeline workflows."""
     p = argparse.ArgumentParser(description="Wigner MATLAB-to-Python pipeline CLI")
     sub = p.add_subparsers(dest="cmd", required=True)
 
@@ -26,10 +27,15 @@ def _build_parser() -> argparse.ArgumentParser:
     s3.add_argument("--output-dir", default="outputs/indium_analysis")
     s3.add_argument("--n-mc", type=int, default=1000)
     s3.add_argument("--seed", type=int, default=42)
+    s3.add_argument("--fixed-lr-center", type=float, default=None)
+    s3.add_argument("--fixed-rl-center", type=float, default=None)
+    s3.add_argument("--fixed-outer-pad-c", type=float, default=15.0)
+    s3.add_argument("--baseline-fit-offset-mw", type=float, default=1.0)
     return p
 
 
 def main(argv: list[str] | None = None) -> int:
+    """Dispatch CLI command, execute workflow, and print JSON result payload."""
     parser = _build_parser()
     args = parser.parse_args(argv)
 
@@ -38,7 +44,16 @@ def main(argv: list[str] | None = None) -> int:
     elif args.cmd == "run-interface-experiment":
         res = run_interface_experiment(args.workspace, baseline_pattern=args.baseline_pattern, output_dir=args.output_dir)
     elif args.cmd == "run-indium-analysis":
-        res = run_indium_analysis(args.file, output_dir=args.output_dir, n_mc=args.n_mc, seed=args.seed)
+        res = run_indium_analysis(
+            args.file,
+            output_dir=args.output_dir,
+            n_mc=args.n_mc,
+            seed=args.seed,
+            fixed_lr_center=args.fixed_lr_center,
+            fixed_rl_center=args.fixed_rl_center,
+            fixed_outer_pad_c=args.fixed_outer_pad_c,
+            baseline_fit_offset_mw=args.baseline_fit_offset_mw,
+        )
     else:
         parser.error("Unknown command")
         return 2

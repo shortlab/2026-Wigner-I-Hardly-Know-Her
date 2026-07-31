@@ -6,6 +6,7 @@ import numpy as np
 
 @dataclass
 class Segment:
+    """One parsed DSC segment with metadata and aligned numeric vectors."""
     source_file: Path
     segment_index: int
     seg_id: int
@@ -18,4 +19,5 @@ class Segment:
 
     @property
     def label(self) -> str:
+        """Human-readable identifier used in logs/plots."""
         return f"{self.source_file.stem} [seg_id {self.seg_id} - {self.direction}]"

@@ -10,6 +10,7 @@ from ..io_parser import parse_segments
 
 
 def _stack_file_segments(file_segments: list) -> tuple[np.ndarray, np.ndarray]:
+    """Stack per-segment temperature/flow vectors into equal-length matrices."""
     if len(file_segments) < 1:
         raise RuntimeError("No segments in file")
     min_len = min(len(s.ts_c) for s in file_segments)
@@ -23,6 +24,7 @@ def run_interface_experiment(
     baseline_pattern: str = "cle_ind_baseline",
     output_dir: str | Path = "outputs/interface_experiment",
 ) -> dict:
+    """Generate per-file DSC plots with optional indium baseline subtraction."""
     root = Path(workspace_dir)
     files = sorted(root.glob("*.txt"))
     if not files:
